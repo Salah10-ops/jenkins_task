@@ -1,43 +1,33 @@
 pipeline {
-    agent any
-
-    environment {
-        DOCKER_IMAGE = "my-docker-hub-user/nginx-app:${env.BUILD_NUMBER}"
-        DOCKER_LATEST = "my-docker-hub-user/nginx-app:latest"
+    agent {
+        docker {
+            image 'docker:latest'
+            args '--privileged -v /var/run/docker.sock:/var/run/docker.sock'
+        }
     }
-
+    environment {
+        DOCKER_IMAGE = "my-docker-hub-user/nginx-app:2"
+    }
     stages {
-        stage('Build') {
+        stage('Checkout Code') {
             steps {
-                script {
-                    sh 'docker build -t $DOCKER_IMAGE .'
-                }
+                git branch: 'main', credentialsId: 'github-credentials', url: 'https://github.com/your-user/your-repo.git'
             }
         }
-
-        stage('Push to Registry') {
+        stage('Build Docker Image') {
             steps {
-                script {
-                    withDockerRegistry([credentialsId: 'docker-hub-credentials']) {
-                        sh 'docker push $DOCKER_IMAGE'
-                        sh 'docker push $DOCKER_LATEST'
-                    }
-                }
+                sh 'docker build -t $DOCKER_IMAGE .'
             }
         }
-
+        stage('Push Docker Image') {
+            steps {
+                sh 'echo $DOCKER_PASSWORD | docker login -u $DOCKER_USERNAME --password-stdin'
+                sh 'docker push $DOCKER_IMAGE'
+            }
+        }
         stage('Deploy to Production') {
             steps {
-                script {
-                    sshagent(['prod-ssh-key']) {
-                        sh '''
-                        ssh ubuntu@production-machine 'docker pull $DOCKER_LATEST'
-                        ssh ubuntu@production-machine 'docker stop nginx-container || true'
-                        ssh ubuntu@production-machine 'docker rm nginx-container || true'
-                        ssh ubuntu@production-machine 'docker run -d --name nginx-container -p 80:80 $DOCKER_LATEST'
-                        '''
-                    }
-                }
+                sh 'ssh -o StrictHostKeyChecking=no ubuntu@PROD_MACHINE_IP "docker pull $DOCKER_IMAGE && docker run -d -p 80:80 $DOCKER_IMAGE"'
             }
         }
     }
