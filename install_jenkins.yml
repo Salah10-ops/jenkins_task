@@ -1,37 +1,32 @@
-- name: Install Jenkins on CICD Machine
-  hosts: cicd
-  become: true
+- name: Setup Jenkins with Docker-in-Docker
+  hosts: jenkins_server
+  become: yes
   tasks:
-    - name: Install Docker
+    - name: Install required packages
       apt:
-        name: docker.io
+        name:
+          - docker.io
+          - docker-compose
         state: present
         update_cache: yes
 
-    - name: Start Docker Service
-      systemd:
+    - name: Ensure Docker service is running
+      service:
         name: docker
         state: started
         enabled: yes
 
-    - name: Ensure /var/jenkins_home exists
-      file:
-        path: /var/jenkins_home
-        state: directory
-        owner: 1000
-        group: 1000
-        mode: "0777"
-
-    - name: Run Jenkins container with Docker access
+    - name: Create Jenkins Docker container with DinD
       docker_container:
         name: jenkins
         image: jenkins/jenkins:lts
         state: started
-        restart_policy: always
-        privileged: yes
+        restart_policy: unless-stopped
         ports:
           - "8080:8080"
           - "50000:50000"
         volumes:
-          - "/var/jenkins_home:/var/jenkins_home"
           - "/var/run/docker.sock:/var/run/docker.sock"
+          - "/usr/bin/docker:/usr/bin/docker"
+          - "jenkins_home:/var/jenkins_home"
+
